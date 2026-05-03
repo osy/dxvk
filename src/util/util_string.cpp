@@ -1,6 +1,38 @@
 #include "util_string.h"
 
+#include <algorithm>
+#include <cstdarg>
+#include <cstdio>
+#include <vector>
+
 namespace dxvk::str {
+
+  int swprintf(WCHAR* buffer, size_t capacity, const char* format, ...) {
+    if (capacity == 0)
+      return 0;
+
+    // Format into a scratch buffer the same size as the caller's buffer.
+    // vsnprintf still returns the full length even when the output is
+    // truncated, so the return value matches std::snprintf semantics.
+    std::vector<char> scratch(capacity);
+    va_list ap;
+
+    va_start(ap, format);
+    int total = std::vsnprintf(scratch.data(), scratch.size(), format, ap);
+    va_end(ap);
+
+    if (total < 0)
+      return total;
+
+    // Widen ASCII characters to WCHAR.  Callers only use this helper with
+    // plain ASCII format strings, so a byte-for-byte widen is sufficient.
+    size_t toCopy = std::min<size_t>(size_t(total), capacity - 1);
+    for (size_t i = 0; i < toCopy; i++)
+      buffer[i] = static_cast<WCHAR>(static_cast<unsigned char>(scratch[i]));
+    buffer[toCopy] = 0;
+    return total;
+  }
+
 
   const uint8_t* decodeTypedChar(
     const uint8_t*  begin,

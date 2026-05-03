@@ -9,7 +9,6 @@
 #include "../../util/log/log.h"
 
 #include <string>
-#include <sstream>
 
 
 namespace dxvk::wsi {
@@ -37,13 +36,8 @@ namespace dxvk::wsi {
     if (!isDisplayValid(displayId))
       return false;
 
-    std::wstringstream nameStream;
-    nameStream << LR"(\\.\DISPLAY)" << (displayId + 1);
-
-    std::wstring name = nameStream.str();
-
     std::memset(Name, 0, sizeof(Name));
-    name.copy(Name, name.length(), 0);
+    str::swprintf(Name, ARRAYSIZE(Name), "\\\\.\\DISPLAY%d", displayId + 1);
 
     return true;
   }

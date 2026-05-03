@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdarg>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -160,6 +162,38 @@ namespace dxvk::str {
 
     return totalLength;
   }
+
+  /**
+   * \brief Length of a null-terminated WCHAR string
+   *
+   * DXVK's WCHAR is a 2-byte UTF-16 unit.  On Windows that matches the
+   * platform wchar_t, so this forwards to std::wcslen.  On native Linux
+   * builds wchar_t is 4 bytes, so we count units ourselves.
+   */
+  inline size_t wcslen(const WCHAR* str) {
+#ifdef _WIN32
+    return std::wcslen(str);
+#else
+    size_t n = 0;
+    while (str[n]) n++;
+    return n;
+#endif
+  }
+
+  /**
+   * \brief printf-style formatting into a WCHAR buffer
+   *
+   * Takes an ordinary char format string (ASCII); output characters are
+   * widened to UTF-16.  Behaves like std::snprintf: writes at most
+   * \c capacity WCHARs including the null terminator, and returns the
+   * number of WCHARs that would have been written had the buffer been
+   * unbounded (excluding the terminator), or a negative value on error.
+   */
+  int swprintf(WCHAR* buffer, size_t capacity, const char* format, ...)
+#ifdef __GNUC__
+    __attribute__((format(printf, 3, 4)))
+#endif
+    ;
 
   /**
    * \brief Creates string object from wide char array

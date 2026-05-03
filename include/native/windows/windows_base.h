@@ -27,7 +27,10 @@ typedef int32_t *LPLONG;
 
 typedef int32_t HRESULT;
 
-typedef wchar_t WCHAR;
+// Match the Windows ABI: WCHAR is UTF-16 (2 bytes), not the native
+// Linux wchar_t (4 bytes).  Required so structs like DXGI_OUTPUT_DESC
+// and DXGI_ADAPTER_DESC have the same layout as on Windows.
+typedef uint16_t WCHAR;
 typedef WCHAR *NWPSTR, *LPWSTR, *PWSTR;
 typedef unsigned char UCHAR, *PUCHAR;
 
@@ -130,7 +133,7 @@ typedef UINT_PTR* PUINT_PTR;
 #endif /*STRICT*/
 
 typedef char* LPSTR;
-typedef const wchar_t* LPCWSTR;
+typedef const WCHAR* LPCWSTR;
 
 typedef struct LUID {
   DWORD LowPart;
