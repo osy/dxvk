@@ -179,3 +179,19 @@ All it takes to do that is to add another WSI backend.
 DXVK Native comes with a slim set of Windows header definitions required for D3D9/11 and the MinGW headers for D3D9/11.
 In most cases, it will end up being plug and play with your renderer, but there may be certain teething issues such as:
 - `__uuidof(type)` is supported, but `__uuidof(variable)` is not supported. Use `__uuidof_var(variable)` instead.
+
+### Win32 event handle compatibility (`SetEvent` / `HEVENT`)
+
+On native Linux builds, the Win32 `HANDLE`-based event API (`SetEvent`, `CreateEvent`, etc.) is shimmed in `src/util/util_win32_compat.h`. The `SetEvent` implementation treats the `HANDLE` as a Linux `eventfd(2)` file descriptor cast to `HANDLE` and writes a single 8-byte counter increment to it:
+
+```cpp
+inline BOOL SetEvent(HANDLE hEvent) {
+  const uint64_t one = 1;
+  return ::write(static_cast<int>(reinterpret_cast<intptr_t>(hEvent)),
+                 &one, sizeof(one)) == static_cast<ssize_t>(sizeof(one));
+}
+```
+
+Callers that need event signaling on Linux can create an `eventfd(0, EFD_CLOEXEC)`, cast the fd to `HANDLE`, and pass it to methods like `ID3D11Fence::SetEventOnCompletion` or `ID3D11DeviceContext3::Flush1`. When DXVK fires `SetEvent(hEvent)`, the eventfd becomes readable via `poll(fd, POLLIN)`, allowing the caller to detect completion without platform-specific threading.
+
+If the `HANDLE` is not a valid writable file descriptor, the `write` call fails silently and returns `FALSE`, preserving the previous stub behavior for callers that do not use the eventfd convention.

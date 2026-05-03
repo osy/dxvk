@@ -4,6 +4,8 @@
 
 #include <windows.h>
 #include <dlfcn.h>
+#include <unistd.h>
+#include <cstdint>
 
 #include "log/log.h"
 
@@ -41,8 +43,15 @@ inline BOOL ReleaseSemaphore(
 }
 
 inline BOOL SetEvent(HANDLE hEvent) {
-  dxvk::Logger::warn("SetEvent not implemented.");
-  return FALSE;
+  /* Convention on native Linux: hEvent is an eventfd(2) fd cast to
+   * HANDLE.  Writing the 8-byte counter increment wakes any poller on
+   * the matching fd.  Non-fd HANDLEs make write() fail silently with
+   * EBADF, matching the previous stub. */
+  if (!hEvent)
+    return FALSE;
+  const uint64_t one = 1;
+  return ::write(static_cast<int>(reinterpret_cast<intptr_t>(hEvent)),
+                 &one, sizeof(one)) == static_cast<ssize_t>(sizeof(one));
 }
 
 inline BOOL DuplicateHandle(
