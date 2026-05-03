@@ -474,6 +474,20 @@ namespace dxvk::vk {
     VULKAN_FN(vkCmdCuLaunchKernelNVX);
     #endif
 
+    #ifdef VK_KHR_external_memory_fd
+    VULKAN_FN(vkGetMemoryFdKHR);
+    VULKAN_FN(vkGetMemoryFdPropertiesKHR);
+    #endif
+
+    #ifdef VK_KHR_external_semaphore_fd
+    VULKAN_FN(vkGetSemaphoreFdKHR);
+    VULKAN_FN(vkImportSemaphoreFdKHR);
+    #endif
+
+    #ifdef VK_EXT_image_drm_format_modifier
+    VULKAN_FN(vkGetImageDrmFormatModifierPropertiesEXT);
+    #endif
+
     #ifdef VK_KHR_external_memory_win32
     VULKAN_FN(vkGetMemoryWin32HandleKHR);
     VULKAN_FN(vkGetMemoryWin32HandlePropertiesKHR);

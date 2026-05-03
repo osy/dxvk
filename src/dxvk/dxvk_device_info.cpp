@@ -25,16 +25,19 @@ namespace dxvk {
     HANDLE_EXT(extDescriptorBuffer);               \
     HANDLE_EXT(extDescriptorHeap);                 \
     HANDLE_EXT(extExtendedDynamicState3);          \
+    HANDLE_EXT(extExternalMemoryDmaBuf);           \
     HANDLE_EXT(extFragmentShaderInterlock);        \
     HANDLE_EXT(extFullScreenExclusive);            \
     HANDLE_EXT(extGraphicsPipelineLibrary);        \
     HANDLE_EXT(extHdrMetadata);                    \
+    HANDLE_EXT(extImageDrmFormatModifier);         \
     HANDLE_EXT(extLineRasterization);              \
     HANDLE_EXT(extMemoryBudget);                   \
     HANDLE_EXT(extMemoryPriority);                 \
     HANDLE_EXT(extMultiDraw);                      \
     HANDLE_EXT(extNonSeamlessCubeMap);             \
     HANDLE_EXT(extPageableDeviceLocalMemory);      \
+    HANDLE_EXT(extQueueFamilyForeign);             \
     HANDLE_EXT(extRobustness2);                    \
     HANDLE_EXT(extSampleLocations);                \
     HANDLE_EXT(extShaderModuleIdentifier);         \
@@ -44,7 +47,9 @@ namespace dxvk {
     HANDLE_EXT(extTransformFeedback);              \
     HANDLE_EXT(extVertexAttributeDivisor);         \
     HANDLE_EXT(khrDynamicRenderingLocalRead);      \
+    HANDLE_EXT(khrExternalMemoryFd);               \
     HANDLE_EXT(khrExternalMemoryWin32);            \
+    HANDLE_EXT(khrExternalSemaphoreFd);            \
     HANDLE_EXT(khrExternalSemaphoreWin32);         \
     HANDLE_EXT(khrLoadStoreOpNone);                \
     HANDLE_EXT(khrMaintenance5);                   \
@@ -972,6 +977,22 @@ namespace dxvk {
 
       /* Tiler stuff */
       ENABLE_EXT_FEATURE(khrDynamicRenderingLocalRead, dynamicRenderingLocalRead, false),
+
+      /* External memory dmabuf export for shared resources on native */
+      ENABLE_EXT(extExternalMemoryDmaBuf, false),
+      ENABLE_EXT(khrExternalMemoryFd, false),
+
+      /* DRM format modifiers for dmabuf shared-resource export/import
+       * on native.  Absent, shared resources fall back to linear. */
+      ENABLE_EXT(extImageDrmFormatModifier, false),
+
+      /* Relaxes queue-family ownership for dmabuf images shared across
+       * devices on native */
+      ENABLE_EXT(extQueueFamilyForeign, false),
+
+      /* Opaque-fd timeline semaphore export/import for shared fences
+       * on native */
+      ENABLE_EXT(khrExternalSemaphoreFd, false),
 
       /* External memory features for wine */
       ENABLE_EXT(khrExternalMemoryWin32, false),
