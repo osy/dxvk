@@ -77,6 +77,15 @@ namespace dxvk::env {
 
 
   std::string getExePath() {
+    // Allow the caller to override the path used for per-game profile
+    // matching. Used by hosted/proxied DXVK setups (e.g. virglrenderer's
+    // Neptune backend) where /proc/self/exe resolves to the renderer
+    // process, not the actual game executable. The override is consulted
+    // once during DxvkInstance construction; later changes are not
+    // propagated to cached options downstream.
+    if (const char *o = std::getenv("DXVK_APP_PATH"); o && *o)
+      return o;
+
 #if defined(_WIN32)
     std::vector<WCHAR> exePath;
     exePath.resize(MAX_PATH + 1);
