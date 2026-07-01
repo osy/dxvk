@@ -1691,11 +1691,18 @@ namespace dxvk {
       return SampleCount ? S_OK : E_FAIL;
     }
     
-    // All other unknown formats should result in an error return.
+    // A valid DXGI_FORMAT that DXVK can't map to Vulkan (e.g.
+    // R10G10B10_XR_BIAS_A2_UNORM = 89, a wide-gamut/HDR format): native D3D11
+    // returns S_OK with 0 quality levels for a *valid-but-unsupported* format;
+    // E_INVALIDARG is only for truly invalid format values. Returning
+    // E_INVALIDARG here made DWM's HDR/MSAA cap-enumeration retry-loop forever
+    // (CheckMultisampleQualityLevels ~22000x, desktop never composites).
     VkFormat format = LookupFormat(Format, DXGI_VK_FORMAT_MODE_ANY).Format;
 
-    if (format == VK_FORMAT_UNDEFINED)
-      return E_INVALIDARG;
+    if (format == VK_FORMAT_UNDEFINED) {
+      *pNumQualityLevels = 0;
+      return S_OK;
+    }
     
     // Zero-init now, leave value undefined otherwise.
     // This does actually match native D3D11 behaviour.
