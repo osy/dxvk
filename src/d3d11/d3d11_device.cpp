@@ -1442,6 +1442,15 @@ namespace dxvk {
           void**      ppResource) {
     InitReturnPtr(ppResource);
 
+#ifndef _WIN32
+    // Native: the handle is a descriptor pointer, not a kernel handle
+    if (ppResource == nullptr)
+      return S_FALSE;
+
+    return OpenSharedResourceGeneric<true>(
+      hResource, ReturnedInterface, ppResource);
+#endif
+
     if (!(reinterpret_cast<uintptr_t>(hResource) & 0xc0000000)) {
       Logger::warn("D3D11Device::OpenSharedResource: Invalid shared handle type");
       return E_INVALIDARG;
@@ -1528,6 +1537,15 @@ namespace dxvk {
           REFIID      ReturnedInterface,
           void**      ppResource) {
     InitReturnPtr(ppResource);
+
+#ifndef _WIN32
+    // Native: the handle is a descriptor pointer, not a kernel handle
+    if (ppResource == nullptr)
+      return S_FALSE;
+
+    return OpenSharedResourceGeneric<false>(
+      hResource, ReturnedInterface, ppResource);
+#endif
 
     if (reinterpret_cast<uintptr_t>(hResource) & 0xc0000000) {
       Logger::warn("D3D11Device::OpenSharedResource1: Invalid shared handle type");
@@ -2601,13 +2619,14 @@ namespace dxvk {
     d3d11Desc.Depth          = 1,
     d3d11Desc.MipLevels      = metadata.MipLevels;
     d3d11Desc.ArraySize      = metadata.ArraySize;
-    d3d11Desc.Format         = metadata.Format;
-    d3d11Desc.SampleDesc     = metadata.SampleDesc;
-    d3d11Desc.Usage          = metadata.Usage;
+    d3d11Desc.Format         = DXGI_FORMAT(metadata.Format);
+    d3d11Desc.SampleDesc.Count   = metadata.SampleDesc.Count;
+    d3d11Desc.SampleDesc.Quality = metadata.SampleDesc.Quality;
+    d3d11Desc.Usage          = D3D11_USAGE(metadata.Usage);
     d3d11Desc.BindFlags      = metadata.BindFlags;
     d3d11Desc.CPUAccessFlags = metadata.CPUAccessFlags;
     d3d11Desc.MiscFlags      = metadata.MiscFlags;
-    d3d11Desc.TextureLayout  = metadata.TextureLayout;
+    d3d11Desc.TextureLayout  = D3D11_TEXTURE_LAYOUT(metadata.TextureLayout);
     if ((d3d11Desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) && !(d3d11Desc.MiscFlags & (D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX))) {
       Logger::warn("Fixing up wrong MiscFlags");
       d3d11Desc.MiscFlags |= D3D11_RESOURCE_MISC_SHARED;
@@ -2624,8 +2643,55 @@ namespace dxvk {
       return E_INVALIDARG;
     }
 #else
-    Logger::warn("D3D11Device::OpenSharedResourceGeneric: Not supported on this platform.");
-    return E_INVALIDARG;
+    // Native: the handle is a pointer to a caller-provided
+    // DxvkSharedTextureDescriptor; dxvk reads it synchronously and
+    // dup()s the fd, the caller keeps ownership of both.
+    if (hResource == nullptr || hResource == INVALID_HANDLE_VALUE)
+      return E_INVALIDARG;
+
+    auto descriptor = reinterpret_cast<const DxvkSharedTextureDescriptor*>(hResource);
+
+    if (descriptor->magic != DXVK_SHARED_DESCRIPTOR_TEXTURE
+     || descriptor->version != DXVK_SHARED_DESCRIPTOR_VERSION
+     || descriptor->structSize != sizeof(*descriptor)
+     || descriptor->planeCount < 1
+     || descriptor->planeCount > DXVK_SHARED_MAX_PLANES
+     || descriptor->fd < 0) {
+      Logger::warn("D3D11Device::OpenSharedResourceGeneric: Invalid shared descriptor");
+      return E_INVALIDARG;
+    }
+
+    const auto& metadata = descriptor->meta;
+
+    D3D11_COMMON_TEXTURE_DESC d3d11Desc;
+    d3d11Desc.Width          = metadata.Width;
+    d3d11Desc.Height         = metadata.Height;
+    d3d11Desc.Depth          = 1,
+    d3d11Desc.MipLevels      = metadata.MipLevels;
+    d3d11Desc.ArraySize      = metadata.ArraySize;
+    d3d11Desc.Format         = DXGI_FORMAT(metadata.Format);
+    d3d11Desc.SampleDesc.Count   = metadata.SampleDesc.Count;
+    d3d11Desc.SampleDesc.Quality = metadata.SampleDesc.Quality;
+    d3d11Desc.Usage          = D3D11_USAGE(metadata.Usage);
+    d3d11Desc.BindFlags      = metadata.BindFlags;
+    d3d11Desc.CPUAccessFlags = metadata.CPUAccessFlags;
+    d3d11Desc.MiscFlags      = metadata.MiscFlags;
+    d3d11Desc.TextureLayout  = D3D11_TEXTURE_LAYOUT(metadata.TextureLayout);
+
+    if (!(d3d11Desc.MiscFlags & (D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE))) {
+      Logger::warn("Fixing up wrong MiscFlags");
+      d3d11Desc.MiscFlags |= D3D11_RESOURCE_MISC_SHARED;
+    }
+
+    try {
+      const Com<D3D11Texture2D> texture = new D3D11Texture2D(this, &d3d11Desc, nullptr, hResource);
+      texture->QueryInterface(ReturnedInterface, ppResource);
+      return S_OK;
+    }
+    catch (const DxvkError& e) {
+      Logger::err(e.message());
+      return E_INVALIDARG;
+    }
 #endif
   }
 

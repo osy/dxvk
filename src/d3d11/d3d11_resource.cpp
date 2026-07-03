@@ -222,6 +222,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D11DXGIResource::GetSharedHandle(
           HANDLE*                 pSharedHandle) {
+#ifdef _WIN32
     auto texture = GetCommonTexture(m_resource);
     if (texture == nullptr || pSharedHandle == nullptr ||
         (texture->Desc()->MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE))
@@ -247,6 +248,26 @@ namespace dxvk {
 
     *pSharedHandle = kmtHandle;
     return S_OK;
+#else
+    // Native: the shared handle is a pointer to the texture's
+    // dmabuf descriptor, owned by the texture
+    auto texture = GetCommonTexture(m_resource);
+    if (texture == nullptr || pSharedHandle == nullptr)
+      return E_INVALIDARG;
+
+    if (!(texture->Desc()->MiscFlags & (D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE))) {
+      *pSharedHandle = NULL;
+      return S_OK;
+    }
+
+    HANDLE descriptor = texture->GetSharedDescriptor();
+
+    if (descriptor == INVALID_HANDLE_VALUE)
+      return E_INVALIDARG;
+
+    *pSharedHandle = descriptor;
+    return S_OK;
+#endif
   }
 
 

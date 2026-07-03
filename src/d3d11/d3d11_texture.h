@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../util/util_shared_res.h"
 #include "../util/util_small_vector.h"
 
 #include "../dxvk/dxvk_cs.h"
@@ -249,7 +250,22 @@ namespace dxvk {
     Rc<DxvkImage> GetImage() const {
       return m_image;
     }
-    
+
+    /**
+     * \brief Native shared-resource descriptor
+     *
+     * Native only: pointer to the DxvkSharedTextureDescriptor
+     * describing this texture's dmabuf export. The descriptor and
+     * its fd are owned by the texture.
+     * \returns Descriptor pointer, or INVALID_HANDLE_VALUE
+     */
+    HANDLE GetSharedDescriptor() {
+      return m_sharedDescriptor.fd >= 0
+        ? reinterpret_cast<HANDLE>(&m_sharedDescriptor)
+        : INVALID_HANDLE_VALUE;
+    }
+
+
     /**
      * \brief Mapped subresource buffer
      * 
@@ -588,6 +604,10 @@ namespace dxvk {
 
     void*                         m_mapPtr = nullptr;
 
+    // Native shared-resource descriptor; fd < 0 when not exported.
+    // Owns its fd for the texture's lifetime.
+    DxvkSharedTextureDescriptor   m_sharedDescriptor = { 0u, 0u, 0u, { }, 0u, 0u, { }, 0u, -1 };
+
     void CreateMappedBuffer(
             UINT                  Subresource);
     
@@ -611,6 +631,8 @@ namespace dxvk {
       const VkImageSubresource&   subresource) const;
 
     void ExportImageInfo();
+
+    void BuildSharedDescriptor();
 
     static BOOL IsR32UavCompatibleFormat(
             DXGI_FORMAT           Format);

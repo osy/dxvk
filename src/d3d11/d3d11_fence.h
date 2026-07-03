@@ -3,6 +3,8 @@
 #include "../dxvk/dxvk_fence.h"
 #include "../dxvk/dxvk_gpu_query.h"
 
+#include "../util/util_shared_res.h"
+
 #include "d3d11_device_child.h"
 
 namespace dxvk {
@@ -40,11 +42,15 @@ namespace dxvk {
     }
     
   private:
-    
+
     Rc<DxvkFence>           m_fence;
     D3D11_FENCE_FLAG        m_flags = D3D11_FENCE_FLAG_NONE;
 
     D3DDestructionNotifier  m_destructionNotifier;
+
+    // Native shared-fence descriptor; fd < 0 when not exported.
+    // Owns its fd for the fence's lifetime.
+    DxvkSharedFenceDescriptor m_sharedDescriptor = { 0u, 0u, 0u, -1 };
 
   };
   

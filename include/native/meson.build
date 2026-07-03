@@ -18,3 +18,8 @@ install_headers(
   'wsi/native_glfw.h',
   subdir: 'dxvk/wsi',
 )
+
+install_headers(
+  'dxvk_shared_resource.h',
+  subdir: 'dxvk',
+)

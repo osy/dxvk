@@ -48,10 +48,18 @@ namespace dxvk {
     DxvkSharedHandleMode mode = DxvkSharedHandleMode::None;
     VkExternalMemoryHandleTypeFlagBits type   = VK_EXTERNAL_MEMORY_HANDLE_TYPE_FLAG_BITS_MAX_ENUM;
     union {
-      // When we want to implement this on non-Windows platforms,
-      // we could add a `int fd` here, etc.
       HANDLE handle = INVALID_HANDLE_VALUE;
+      // Borrowed dma-buf fd when type is
+      // VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT and mode is
+      // Import; dxvk dup()s it for the actual import.
+      int fd;
     };
+    // Import description for dma-buf handles: the image is recreated
+    // with this explicit modifier and plane layout.
+    uint64_t dmabufModifier = 0u;
+    uint32_t dmabufPlaneCount = 0u;
+    std::array<VkSubresourceLayout, 4> dmabufPlanes = { };
+    VkDeviceSize dmabufAllocationSize = 0u;
   };
 
 
@@ -1015,6 +1023,9 @@ namespace dxvk {
     DxvkAllocationModes mode = 0u;
     /// Shared handle type
     VkExternalMemoryHandleTypeFlagBits handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_FLAG_BITS_MAX_ENUM;
+    /// Memory types the allocation is restricted to. Used for external
+    /// memory imports where the handle constrains the memory type.
+    uint32_t memoryTypeBits = ~0u;
   };
 
 

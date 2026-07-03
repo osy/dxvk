@@ -1136,6 +1136,14 @@ namespace dxvk {
     VkMemoryRequirements2 requirements = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, &dedicatedRequirements };
     vk->vkGetImageMemoryRequirements2(vk->device(), &requirementInfo, &requirements);
 
+    // External memory imports restrict the usable memory types
+    requirements.memoryRequirements.memoryTypeBits &= allocationInfo.memoryTypeBits;
+
+    if (!requirements.memoryRequirements.memoryTypeBits) {
+      vk->vkDestroyImage(vk->device(), image, nullptr);
+      throw DxvkError("Failed to create image: No compatible memory types");
+    }
+
     // For shared resources, we always require a dedicated allocation
     if (next) {
       dedicatedRequirements.requiresDedicatedAllocation = VK_TRUE;

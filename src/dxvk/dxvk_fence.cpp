@@ -1,6 +1,10 @@
 #include "dxvk_device.h"
 #include "dxvk_fence.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace dxvk {
 
   DxvkFence::DxvkFence(
@@ -41,6 +45,49 @@ namespace dxvk {
 
     if (vr != VK_SUCCESS)
       throw DxvkError("Failed to create timeline semaphore");
+
+    if (info.sharedType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT) {
+      // Consumers of shared fences depend on the export/import being
+      // real; fail loudly instead of degrading to a private fence.
+#ifndef _WIN32
+      if (info.sharedFd < 0) {
+        if (!(externalFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)) {
+          m_vkd->vkDestroySemaphore(m_vkd->device(), m_semaphore, nullptr);
+          throw DxvkError("Failed to create shared timeline semaphore: opaque fd export not supported");
+        }
+      } else {
+        if (!(externalFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT)) {
+          m_vkd->vkDestroySemaphore(m_vkd->device(), m_semaphore, nullptr);
+          throw DxvkError("Failed to import timeline semaphore: opaque fd import not supported");
+        }
+
+        // Vulkan consumes the fd on a successful import; the caller
+        // keeps ownership of theirs, so import a dup. Opaque-fd
+        // imports are permanent: the semaphore payload is shared, so
+        // values signaled on one device are observed on all.
+        int fd = dup(info.sharedFd);
+
+        if (fd < 0) {
+          m_vkd->vkDestroySemaphore(m_vkd->device(), m_semaphore, nullptr);
+          throw DxvkError("Failed to import timeline semaphore: dup failed");
+        }
+
+        VkImportSemaphoreFdInfoKHR importInfo = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR };
+        importInfo.semaphore = m_semaphore;
+        importInfo.handleType = info.sharedType;
+        importInfo.fd = fd;
+
+        vr = m_vkd->vkImportSemaphoreFdKHR(m_vkd->device(), &importInfo);
+
+        if (vr != VK_SUCCESS) {
+          close(fd);
+          m_vkd->vkDestroySemaphore(m_vkd->device(), m_semaphore, nullptr);
+          throw DxvkError(str::format("Failed to import timeline semaphore: ", vr));
+        }
+      }
+#endif
+      return;
+    }
 
     if (info.sharedHandle != INVALID_HANDLE_VALUE) {
       if (externalFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT) {
@@ -172,6 +219,26 @@ namespace dxvk {
     }
     return value;
   }
+
+  int DxvkFence::sharedFd() const {
+    if (m_info.sharedType != VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT)
+      return -1;
+
+    VkSemaphoreGetFdInfoKHR fdInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR };
+    fdInfo.semaphore = m_semaphore;
+    fdInfo.handleType = m_info.sharedType;
+
+    int fd = -1;
+    VkResult vr = m_vkd->vkGetSemaphoreFdKHR(m_vkd->device(), &fdInfo, &fd);
+
+    if (vr != VK_SUCCESS) {
+      Logger::err(str::format("Failed to export semaphore fd: ", vr));
+      return -1;
+    }
+
+    return fd;
+  }
+
 
   HANDLE DxvkFence::sharedHandle() const {
     if (m_info.sharedType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_FLAG_BITS_MAX_ENUM)

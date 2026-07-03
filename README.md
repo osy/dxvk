@@ -180,6 +180,45 @@ DXVK Native comes with a slim set of Windows header definitions required for D3D
 In most cases, it will end up being plug and play with your renderer, but there may be certain teething issues such as:
 - `__uuidof(type)` is supported, but `__uuidof(variable)` is not supported. Use `__uuidof_var(variable)` instead.
 
+### Shared resources (dma-buf textures and fences)
+
+On native Linux builds, D3D11 resource sharing is implemented over Linux dma-buf and opaque file descriptors rather than Win32 shared `HANDLE`s. A shared-resource `HANDLE` is **a pointer to a self-contained descriptor** (`include/native/dxvk_shared_resource.h`), not an opaque OS handle. The descriptor bytes together with the fd they carry are the transportable unit: ship `{descriptor, fd}` to another process (for example over a Unix socket with `SCM_RIGHTS`) and it can reconstruct the resource there. The pointer itself is process-local and carries no meaning across a process boundary.
+
+**Exporting a texture.** Create an `ID3D11Texture2D` with `D3D11_RESOURCE_MISC_SHARED` (or `D3D11_RESOURCE_MISC_SHARED_NTHANDLE`) and query its shared handle through the resource's `IDXGIResource`:
+
+```cpp
+Com<IDXGIResource> dxgiRes;
+texture->QueryInterface(__uuidof(IDXGIResource), (void**)&dxgiRes);
+
+HANDLE handle = nullptr;
+dxgiRes->GetSharedHandle(&handle);
+
+// handle is a DxvkSharedTextureDescriptor* owned by the texture:
+//   desc->fd                is the dma-buf
+//   desc->drmFormatModifier, desc->planes[] describe its layout
+//   desc->meta              mirrors the D3D11_TEXTURE2D_DESC
+auto* desc = reinterpret_cast<DxvkSharedTextureDescriptor*>(handle);
+```
+
+The texture allocates dedicated external memory and tiles by a DRM format modifier negotiated from the driver's list (linear fallback when `VK_EXT_image_drm_format_modifier` is unavailable). Only **2D, single-sampled** textures can be shared; keyed-mutex sharing (`D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX`) is rejected. Sharing failures are loud — `CreateTexture2D` fails rather than silently handing back a non-shared resource.
+
+**Importing a texture.** In the consumer, fill a `DxvkSharedTextureDescriptor` (copy the descriptor bytes you received, then set `fd` to your received fd) and pass its address, cast to `HANDLE`, to `OpenSharedResource` / `OpenSharedResource1`:
+
+```cpp
+DxvkSharedTextureDescriptor desc = receivedDescriptor;
+desc.fd = receivedFd;
+
+Com<ID3D11Texture2D> texture;
+device->OpenSharedResource(reinterpret_cast<HANDLE>(&desc),
+  __uuidof(ID3D11Texture2D), (void**)&texture);
+```
+
+DXVK validates the descriptor's `magic` / `version` / `structSize` (mismatch → `E_INVALIDARG`), recreates the image with the explicit modifier layout, and imports a `dup()` of the fd restricted to the memory types `vkGetMemoryFdPropertiesKHR` reports as compatible.
+
+**Shared fences** follow the same pattern over opaque-fd timeline semaphores. Create an `ID3D11Fence` with `D3D11_FENCE_FLAG_SHARED`, export it with `ID3D11Fence::CreateSharedHandle` (yielding a `DxvkSharedFenceDescriptor*`), and import it in the other process with `ID3D11Device5::OpenSharedFence`. Values signaled on one device are then observed on all. Opaque fds require the **same Vulkan driver** on both ends.
+
+**Ownership.** On export, the descriptor and its fd are owned by the exporting texture/fence and stay valid until that object is destroyed — do not free the descriptor or close the fd; `dup()` the fd to let it outlive the exporter. On import, DXVK reads the descriptor and `dup()`s the fd synchronously during the call, so the caller may release both as soon as it returns.
+
 ### Win32 event handle compatibility (`SetEvent` / `HEVENT`)
 
 On native Linux builds, the Win32 `HANDLE`-based event API (`SetEvent`, `CreateEvent`, etc.) is shimmed in `src/util/util_win32_compat.h`. The `SetEvent` implementation treats the `HANDLE` as a Linux `eventfd(2)` file descriptor cast to `HANDLE` and writes a single 8-byte counter increment to it:

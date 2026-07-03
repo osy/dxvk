@@ -24,10 +24,12 @@ namespace dxvk {
     uint64_t        initialValue;
     VkExternalSemaphoreHandleTypeFlagBits sharedType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_FLAG_BITS_MAX_ENUM;
     union {
-      // When we want to implement this on non-Windows platforms,
-      // we could add a `int fd` here, etc.
       HANDLE          sharedHandle = INVALID_HANDLE_VALUE;
     };
+    // Borrowed opaque fd to import when sharedType is
+    // VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+    // dxvk dup()s it for the actual import.
+    int             sharedFd = -1;
   };
 
   /**
@@ -106,6 +108,15 @@ namespace dxvk {
      * \returns The shared handle with the type given by DxvkFenceCreateInfo::sharedType
      */
     HANDLE sharedHandle() const;
+
+    /**
+     * \brief Exports the timeline semaphore as an opaque fd
+     *
+     * Valid for fences created with the OPAQUE_FD shared type.
+     * The returned fd is owned by the caller.
+     * \returns Opaque fd, or -1 on failure
+     */
+    int sharedFd() const;
 
     /*
      * \brief Waits for the given value

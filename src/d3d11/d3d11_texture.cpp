@@ -6,6 +6,10 @@
 #include "../util/util_shared_res.h"
 #include "../util/util_win32_compat.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace dxvk {
   
   D3D11CommonTexture::D3D11CommonTexture(
@@ -52,6 +56,7 @@ namespace dxvk {
     const auto sharingFlags = D3D11_RESOURCE_MISC_SHARED|D3D11_RESOURCE_MISC_SHARED_NTHANDLE|D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
 
     if (m_desc.MiscFlags & sharingFlags) {
+#ifdef _WIN32
       if (pDevice->GetFeatureLevel() < D3D_FEATURE_LEVEL_10_0 ||
           (m_desc.MiscFlags & (D3D11_RESOURCE_MISC_SHARED|D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)) == (D3D11_RESOURCE_MISC_SHARED|D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) ||
           (m_desc.MiscFlags & sharingFlags) == D3D11_RESOURCE_MISC_SHARED_NTHANDLE)
@@ -65,6 +70,54 @@ namespace dxvk {
         ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
         : VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
       imageInfo.sharing.handle = hSharedHandle;
+#else
+      // Native: shared textures are dmabuf exports/imports; the HANDLE
+      // is a pointer to a DxvkSharedTextureDescriptor (see
+      // include/native/dxvk_shared_resource.h).  Keyed mutexes have no
+      // cross-process backing here.
+      if (m_desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
+        throw DxvkError(str::format("D3D11: Keyed-mutex sharing not supported on native:",
+          "\n  MiscFlags:  ", m_desc.MiscFlags));
+
+      if (Dimension != D3D11_RESOURCE_DIMENSION_TEXTURE2D
+       || m_desc.SampleDesc.Count != 1)
+        throw DxvkError(str::format("D3D11: Cannot share texture: 2D single-sampled only:",
+          "\n  Dimension: ", m_dimension,
+          "\n  Samples:   ", m_desc.SampleDesc.Count));
+
+      const auto& features = pDevice->GetDXVKDevice()->features();
+
+      if (!features.khrExternalMemoryFd || !features.extExternalMemoryDmaBuf)
+        throw DxvkError("D3D11: Cannot share texture: dmabuf export not supported by device");
+
+      imageInfo.shared = true;
+      imageInfo.sharing.type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+      if (hSharedHandle == INVALID_HANDLE_VALUE) {
+        imageInfo.sharing.mode = DxvkSharedHandleMode::Export;
+      } else {
+        auto descriptor = reinterpret_cast<const DxvkSharedTextureDescriptor*>(hSharedHandle);
+
+        if (descriptor->magic != DXVK_SHARED_DESCRIPTOR_TEXTURE
+         || descriptor->version != DXVK_SHARED_DESCRIPTOR_VERSION
+         || descriptor->structSize != sizeof(*descriptor)
+         || descriptor->planeCount < 1
+         || descriptor->planeCount > DXVK_SHARED_MAX_PLANES
+         || descriptor->fd < 0)
+          throw DxvkError("D3D11: Cannot open shared texture: invalid descriptor");
+
+        imageInfo.sharing.mode = DxvkSharedHandleMode::Import;
+        imageInfo.sharing.fd = descriptor->fd;
+        imageInfo.sharing.dmabufModifier = descriptor->drmFormatModifier;
+        imageInfo.sharing.dmabufPlaneCount = descriptor->planeCount;
+        imageInfo.sharing.dmabufAllocationSize = descriptor->allocationSize;
+
+        for (uint32_t i = 0; i < descriptor->planeCount; i++) {
+          imageInfo.sharing.dmabufPlanes[i] = VkSubresourceLayout {
+            descriptor->planes[i].offset, 0u, descriptor->planes[i].pitch, 0u, 0u };
+        }
+      }
+#endif
     }
 
     if (!pDevice->GetOptions()->disableMsaa)
@@ -248,6 +301,7 @@ namespace dxvk {
       m_mapPtr = m_image->mapPtr(0);
 
     if (imageInfo.sharing.mode == DxvkSharedHandleMode::Export) {
+#ifdef _WIN32
       if (m_desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) {
         try {
           Rc<DxvkKeyedMutex> mutex = new DxvkKeyedMutex(m_device->GetDXVKDevice(), 0, !!(m_desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE));
@@ -258,12 +312,18 @@ namespace dxvk {
       }
 
       ExportImageInfo();
+#else
+      BuildSharedDescriptor();
+#endif
     }
   }
-  
-  
+
+
   D3D11CommonTexture::~D3D11CommonTexture() {
-    
+#ifndef _WIN32
+    if (m_sharedDescriptor.fd >= 0)
+      close(m_sharedDescriptor.fd);
+#endif
   }
   
   
@@ -806,17 +866,18 @@ namespace dxvk {
 
     DxvkSharedTextureMetadata metadata;
 
-    metadata.Width          = m_desc.Width;
-    metadata.Height         = m_desc.Height;
-    metadata.MipLevels      = m_desc.MipLevels;
-    metadata.ArraySize      = m_desc.ArraySize;
-    metadata.Format         = m_desc.Format;
-    metadata.SampleDesc     = m_desc.SampleDesc;
-    metadata.Usage          = m_desc.Usage;
-    metadata.BindFlags      = m_desc.BindFlags;
-    metadata.CPUAccessFlags = m_desc.CPUAccessFlags;
-    metadata.MiscFlags      = m_desc.MiscFlags;
-    metadata.TextureLayout  = m_desc.TextureLayout;
+    metadata.Width              = m_desc.Width;
+    metadata.Height             = m_desc.Height;
+    metadata.MipLevels          = m_desc.MipLevels;
+    metadata.ArraySize          = m_desc.ArraySize;
+    metadata.Format             = m_desc.Format;
+    metadata.SampleDesc.Count   = m_desc.SampleDesc.Count;
+    metadata.SampleDesc.Quality = m_desc.SampleDesc.Quality;
+    metadata.Usage              = m_desc.Usage;
+    metadata.BindFlags          = m_desc.BindFlags;
+    metadata.CPUAccessFlags     = m_desc.CPUAccessFlags;
+    metadata.MiscFlags          = m_desc.MiscFlags;
+    metadata.TextureLayout      = m_desc.TextureLayout;
 
     if (hSharedHandle == INVALID_HANDLE_VALUE || !setSharedMetadata(hSharedHandle, &metadata, sizeof(metadata))) {
       Logger::warn("D3D11: Failed to write shared resource info for a texture");
@@ -825,8 +886,45 @@ namespace dxvk {
     if (hSharedHandle != INVALID_HANDLE_VALUE)
       CloseHandle(hSharedHandle);
   }
-  
-  
+
+
+  void D3D11CommonTexture::BuildSharedDescriptor() {
+    DxvkImageDmabufInfo dmabufInfo = { };
+
+    VkResult vr = m_image->exportDmabufInfo(&dmabufInfo);
+
+    if (vr != VK_SUCCESS)
+      throw DxvkError(str::format("D3D11: Failed to export shared texture: ", vr));
+
+    auto& descriptor = m_sharedDescriptor;
+    descriptor.magic                = DXVK_SHARED_DESCRIPTOR_TEXTURE;
+    descriptor.version              = DXVK_SHARED_DESCRIPTOR_VERSION;
+    descriptor.structSize           = sizeof(descriptor);
+    descriptor.meta.Width           = m_desc.Width;
+    descriptor.meta.Height          = m_desc.Height;
+    descriptor.meta.MipLevels       = m_desc.MipLevels;
+    descriptor.meta.ArraySize       = m_desc.ArraySize;
+    descriptor.meta.Format          = m_desc.Format;
+    descriptor.meta.SampleDesc.Count   = m_desc.SampleDesc.Count;
+    descriptor.meta.SampleDesc.Quality = m_desc.SampleDesc.Quality;
+    descriptor.meta.Usage           = m_desc.Usage;
+    descriptor.meta.BindFlags       = m_desc.BindFlags;
+    descriptor.meta.CPUAccessFlags  = m_desc.CPUAccessFlags;
+    descriptor.meta.MiscFlags       = m_desc.MiscFlags;
+    descriptor.meta.TextureLayout   = m_desc.TextureLayout;
+    descriptor.drmFormatModifier    = dmabufInfo.modifier;
+    descriptor.planeCount           = dmabufInfo.planeCount;
+
+    for (uint32_t i = 0; i < dmabufInfo.planeCount; i++) {
+      descriptor.planes[i].offset = dmabufInfo.planes[i].offset;
+      descriptor.planes[i].pitch  = dmabufInfo.planes[i].rowPitch;
+    }
+
+    descriptor.allocationSize = dmabufInfo.allocationSize;
+    descriptor.fd = dmabufInfo.fd;
+  }
+
+
   BOOL D3D11CommonTexture::IsR32UavCompatibleFormat(
           DXGI_FORMAT           Format) {
     return Format == DXGI_FORMAT_R8G8B8A8_TYPELESS

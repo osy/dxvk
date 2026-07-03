@@ -109,6 +109,26 @@ namespace dxvk {
 
 
   /**
+   * \brief Dmabuf export info
+   *
+   * Describes the memory layout and fd of an image
+   * created with dmabuf export sharing enabled.
+   */
+  struct DxvkImageDmabufInfo {
+    /// DRM format modifier the image was created with
+    uint64_t modifier = 0u;
+    /// Number of memory planes
+    uint32_t planeCount = 0u;
+    /// Per-plane memory layout
+    std::array<VkSubresourceLayout, 4> planes = { };
+    /// Size of the backing memory allocation
+    VkDeviceSize allocationSize = 0u;
+    /// Exported dma-buf fd, owned by the caller
+    int fd = -1;
+  };
+
+
+  /**
    * \brief Image properties stored in the view
    *
    * Used to reduce some pointer chasing.
@@ -643,6 +663,16 @@ namespace dxvk {
     HANDLE sharedHandle() const;
 
     /**
+     * \brief Exports dmabuf info for a shared image
+     *
+     * Valid for images created with dmabuf export sharing. The
+     * returned fd is a new file descriptor owned by the caller.
+     * \param [out] info Modifier, plane layout, size and fd
+     * \returns Status of the export operation
+     */
+    VkResult exportDmabufInfo(DxvkImageDmabufInfo* info) const;
+
+    /**
      * \brief Retrives sparse page table
      * \returns Page table
      */
@@ -856,6 +886,12 @@ namespace dxvk {
     bool                        m_unifiedLayoutEnabled = false;
     bool                        m_unifiedLayoutAvailable = false;
 
+    // Dmabuf sharing: whether images use DRM format modifier tiling,
+    // and the (modifier, memory plane count) pairs usable for export
+    // or describing the imported image.
+    bool                        m_dmabufUseModifiers = false;
+    std::vector<std::pair<uint64_t, uint32_t>> m_dmabufModifiers;
+
     Rc<DxvkKeyedMutex>          m_mutex       = nullptr;
 
     DxvkResourceImageInfo       m_imageInfo   = { };
@@ -884,10 +920,20 @@ namespace dxvk {
             uint32_t              formatCount,
       const VkFormat*             formats);
 
+    bool isDmabufShared() const {
+      return m_info.sharing.mode != DxvkSharedHandleMode::None
+          && m_info.sharing.type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+    }
+
     bool canShareImage(
             DxvkDevice*           device,
       const VkImageCreateInfo&    createInfo,
-      const DxvkSharedHandleInfo& sharingInfo) const;
+      const DxvkSharedHandleInfo& sharingInfo);
+
+    bool canShareDmabufImage(
+            DxvkDevice*           device,
+      const VkImageCreateInfo&    createInfo,
+      const DxvkSharedHandleInfo& sharingInfo);
 
     bool canUseUnifiedLayout(const DxvkDevice& device) const;
 
