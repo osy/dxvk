@@ -60,6 +60,9 @@ namespace dxvk {
     uint32_t dmabufPlaneCount = 0u;
     std::array<VkSubresourceLayout, 4> dmabufPlanes = { };
     VkDeviceSize dmabufAllocationSize = 0u;
+    // Export-only: force DRM_FORMAT_MOD_LINEAR instead of negotiating
+    // a modifier, for consumers without modifier plumbing (scanout).
+    VkBool32 dmabufForceLinear = VK_FALSE;
   };
 
 

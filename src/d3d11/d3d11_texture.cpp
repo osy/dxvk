@@ -53,6 +53,15 @@ namespace dxvk {
     if (hSharedHandle == nullptr)
       hSharedHandle = INVALID_HANDLE_VALUE;
 
+#ifndef _WIN32
+    // Vendor bit: linear dmabuf export for scanout consumers.  Strip it
+    // from the public description before any further MiscFlags checks.
+    if (m_desc.MiscFlags & DXVK_D3D11_RESOURCE_MISC_LINEAR_EXPORT) {
+      m_desc.MiscFlags &= ~DXVK_D3D11_RESOURCE_MISC_LINEAR_EXPORT;
+      imageInfo.sharing.dmabufForceLinear = VK_TRUE;
+    }
+#endif
+
     const auto sharingFlags = D3D11_RESOURCE_MISC_SHARED|D3D11_RESOURCE_MISC_SHARED_NTHANDLE|D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
 
     if (m_desc.MiscFlags & sharingFlags) {

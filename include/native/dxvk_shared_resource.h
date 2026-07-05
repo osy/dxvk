@@ -43,6 +43,15 @@ extern "C" {
 #define DXVK_SHARED_MAX_PLANES 4u
 
 /*
+ * Native-only vendor MiscFlags bit for ID3D11Device::CreateTexture2D.
+ * Combined with D3D11_RESOURCE_MISC_SHARED it forces the dmabuf export
+ * to DRM_FORMAT_MOD_LINEAR (no modifier negotiation), so the buffer
+ * can be consumed by scanout paths without modifier plumbing.  The bit
+ * is stripped from the texture's public description.
+ */
+#define DXVK_D3D11_RESOURCE_MISC_LINEAR_EXPORT 0x40000000u
+
+/*
  * D3D11-level description of a shared texture.  Fields mirror
  * D3D11_TEXTURE2D_DESC plus the texture layout; fixed-width types keep
  * the struct usable from C consumers that do not include D3D headers.

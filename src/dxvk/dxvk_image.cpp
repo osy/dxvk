@@ -157,6 +157,10 @@ namespace dxvk {
     // Dmabuf sharing uses DRM format modifier tiling when the device
     // supports it, and falls back to linear otherwise. Must be known
     // before getImageCreateInfo determines the image tiling.
+    // (dmabufForceLinear does NOT disable this: drivers commonly reject
+    // dma-buf external memory on plain LINEAR tiling, so a linear
+    // export must be expressed as DRM_FORMAT_MOD_LINEAR through the
+    // modifier path — see canShareDmabufImage.)
     m_dmabufUseModifiers = isDmabufShared()
       && device->features().extImageDrmFormatModifier;
 
@@ -836,6 +840,13 @@ namespace dxvk {
 
       if (sharingInfo.mode == DxvkSharedHandleMode::Import
        && props.drmFormatModifier != sharingInfo.dmabufModifier)
+        continue;
+
+      // Linear-forced exports (scanout consumers without modifier
+      // plumbing) accept only DRM_FORMAT_MOD_LINEAR.
+      if (sharingInfo.mode == DxvkSharedHandleMode::Export
+       && sharingInfo.dmabufForceLinear
+       && props.drmFormatModifier != 0u)
         continue;
 
       // Check whether images of this modifier support the parameters
