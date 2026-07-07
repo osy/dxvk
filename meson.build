@@ -151,6 +151,7 @@ else
   lib_sdl3 = dependency('sdl3', required: get_option('native_sdl3'))
   lib_sdl2 = dependency('sdl2', required: get_option('native_sdl2'))
   lib_glfw = dependency('glfw3', required: get_option('native_glfw'))
+  enable_headless = get_option('native_headless')
   if lib_sdl3.found()
     compiler_args += ['-DDXVK_WSI_SDL3']
   endif
@@ -160,8 +161,11 @@ else
   if lib_glfw.found()
     compiler_args += ['-DDXVK_WSI_GLFW']
   endif
-  if (not lib_sdl3.found() and not lib_sdl2.found() and not lib_glfw.found())
-    error('SDL3, SDL2, or GLFW are required to build dxvk-native')
+  if enable_headless
+    compiler_args += ['-DDXVK_WSI_HEADLESS']
+  endif
+  if (not lib_sdl3.found() and not lib_sdl2.found() and not lib_glfw.found() and not enable_headless)
+    error('SDL3, SDL2, GLFW, or headless WSI is required to build dxvk-native')
   endif
   
   dxvk_name_prefix = 'dxvk_'
