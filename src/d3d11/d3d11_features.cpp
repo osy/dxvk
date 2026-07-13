@@ -243,6 +243,20 @@ namespace dxvk {
           D3D_FEATURE_LEVEL     FeatureLevel) {
     static std::atomic<bool> s_errorShown = { false };
 
+#ifndef _WIN32
+    (void)FeatureLevel;
+
+    // Native resource sharing uses dma-buf file descriptors rather than
+    // Win32 handles. The native implementation currently supports basic
+    // Tier 1 sharing, but not keyed mutexes or D3D12 handle interop.
+    if (!Device.features().khrExternalMemoryFd
+     || !Device.features().extExternalMemoryDmaBuf) {
+      if (!s_errorShown.exchange(true))
+        Logger::warn("D3D11DeviceFeatures: dma-buf external memory features not supported");
+    }
+
+    return D3D11_SHARED_RESOURCE_TIER_1;
+#else
     // Lie about supporting Tier 1 since that's the
     // minimum required tier for Feature Level 11_1
     if (!Device.features().khrExternalMemoryWin32) {
@@ -313,6 +327,7 @@ namespace dxvk {
       return D3D11_SHARED_RESOURCE_TIER_2;
 
     return D3D11_SHARED_RESOURCE_TIER_3;
+#endif
   }
 
 
