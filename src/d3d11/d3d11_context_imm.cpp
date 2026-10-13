@@ -346,7 +346,7 @@ namespace dxvk {
       // Allocate a new backing slice for the buffer and set
       // it as the 'new' mapped slice. This assumes that the
       // only way to invalidate a buffer is by mapping it.
-      auto bufferSlice = pResource->DiscardSlice(&m_allocationCache);
+      auto bufferSlice = pResource->DiscardSliceShared(&m_allocationCache);
       pMappedResource->pData      = bufferSlice->mapPtr();
       pMappedResource->RowPitch   = bufferSize;
       pMappedResource->DepthPitch = bufferSize;

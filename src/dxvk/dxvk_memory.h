@@ -546,6 +546,17 @@ namespace dxvk {
     }
 
     /**
+     * \brief Checks whether the caller holds the only reference
+     *
+     * Command lists keep a reference until the GPU is done with
+     * the allocation, so this also means the GPU no longer uses it.
+     * \returns \c true if exactly one reference exists
+     */
+    bool isSoleReference() const {
+      return m_useCount.load(std::memory_order_acquire) == 1u;
+    }
+
+    /**
      * \brief Queries allocation flags
      * \returns Allocation flags
      */
@@ -1255,6 +1266,21 @@ namespace dxvk {
       const VkBufferCreateInfo&         createInfo,
       const DxvkAllocationInfo&         allocationInfo,
       const DxvkBufferImportInfo&       importInfo);
+
+    /**
+     * \brief Creates buffer resource on imported dmabuf memory
+     *
+     * The allocation owns a dedicated buffer and the imported
+     * memory, mapped if the memory type is host-visible.
+     * \param [in] createInfo Buffer create info
+     * \param [in] allocationInfo Allocation properties
+     * \param [in] fd dmabuf fd, not consumed
+     * \returns Buffer resource, or \c nullptr on failure
+     */
+    Rc<DxvkResourceAllocation> importBufferResourceDmabuf(
+      const VkBufferCreateInfo&         createInfo,
+      const DxvkAllocationInfo&         allocationInfo,
+            int                         fd);
 
     /**
      * \brief Imports existing image resource

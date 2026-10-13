@@ -447,4 +447,33 @@ extern "C" {
     }
   }
 
+#ifndef _WIN32
+  DLLEXPORT int32_t dxvk_d3d11_buffer_bind_external_dmabuf(
+          void*                 pBuffer,
+          int                   Fd,
+          uint64_t              Length,
+          uint32_t              Cookie) {
+    D3D11Buffer* buffer = GetCommonBuffer(static_cast<ID3D11Buffer*>(pBuffer));
+
+    if (!buffer)
+      return E_INVALIDARG;
+
+    try {
+      return buffer->BindExternalDmabuf(Fd, Length, Cookie);
+    } catch (const DxvkError& e) {
+      Logger::err(e.message());
+      return E_FAIL;
+    }
+  }
+
+
+  DLLEXPORT int dxvk_d3d11_buffer_external_cookie(
+          void*                 pBuffer,
+    const void*                 pMapPtr,
+          uint32_t*             pCookie) {
+    D3D11Buffer* buffer = GetCommonBuffer(static_cast<ID3D11Buffer*>(pBuffer));
+    return buffer && pCookie && buffer->GetExternalCookie(pMapPtr, pCookie) ? 0 : -1;
+  }
+#endif
+
 }

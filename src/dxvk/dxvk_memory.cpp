@@ -8,6 +8,10 @@
 #include "dxvk_memory.h"
 #include "dxvk_sparse.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace dxvk {
 
   void DxvkMemoryChunk::addAllocation(DxvkResourceAllocation* allocation) {
@@ -1322,6 +1326,84 @@ namespace dxvk {
       allocation->m_bufferAddress = getBufferDeviceAddress(importInfo.buffer) + importInfo.offset;
 
     return allocation;
+  }
+
+
+  Rc<DxvkResourceAllocation> DxvkMemoryAllocator::importBufferResourceDmabuf(
+    const VkBufferCreateInfo&         createInfo,
+    const DxvkAllocationInfo&         allocationInfo,
+          int                         fd) {
+#ifdef _WIN32
+    return nullptr;
+#else
+    if (!m_device->features().khrExternalMemoryFd
+     || !m_device->features().extExternalMemoryDmaBuf)
+      return nullptr;
+
+    auto vk = m_device->vkd();
+
+    VkExternalMemoryBufferCreateInfo externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO };
+    externalInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+    VkBufferCreateInfo info = createInfo;
+    externalInfo.pNext = std::exchange(info.pNext, &externalInfo);
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+
+    if (vk->vkCreateBuffer(vk->device(), &info, nullptr, &buffer))
+      return nullptr;
+
+    VkMemoryFdPropertiesKHR fdProperties = { VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR };
+
+    VkBufferMemoryRequirementsInfo2 requirementInfo = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 };
+    requirementInfo.buffer = buffer;
+
+    VkMemoryRequirements2 requirements = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+    vk->vkGetBufferMemoryRequirements2(vk->device(), &requirementInfo, &requirements);
+
+    if (vk->vkGetMemoryFdPropertiesKHR(vk->device(),
+          VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd, &fdProperties)) {
+      vk->vkDestroyBuffer(vk->device(), buffer, nullptr);
+      return nullptr;
+    }
+
+    requirements.memoryRequirements.memoryTypeBits &= fdProperties.memoryTypeBits;
+
+    VkMemoryDedicatedAllocateInfo dedicatedInfo = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
+    dedicatedInfo.buffer = buffer;
+
+    // Vulkan takes the fd only on a successful import
+    VkImportMemoryFdInfoKHR importInfo = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR, &dedicatedInfo };
+    importInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+    importInfo.fd = dup(fd);
+
+    Rc<DxvkResourceAllocation> allocation;
+
+    if (importInfo.fd >= 0)
+      allocation = allocateDedicatedMemory(requirements.memoryRequirements, allocationInfo, &importInfo);
+
+    if (!allocation) {
+      if (importInfo.fd >= 0)
+        close(importInfo.fd);
+
+      vk->vkDestroyBuffer(vk->device(), buffer, nullptr);
+      return nullptr;
+    }
+
+    allocation->m_flags.set(DxvkAllocationFlag::OwnsBuffer);
+    allocation->m_flags.clr(DxvkAllocationFlag::CanMove);
+    allocation->m_buffer = buffer;
+    allocation->m_bufferOffset = 0u;
+    allocation->m_bufferAddress = 0u;
+
+    if (vk->vkBindBufferMemory(vk->device(), buffer, allocation->m_memory, 0u))
+      return nullptr;
+
+    if (createInfo.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
+      allocation->m_bufferAddress = getBufferDeviceAddress(buffer);
+
+    return allocation;
+#endif
   }
 
 

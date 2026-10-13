@@ -123,6 +123,77 @@ namespace dxvk {
   }
   
   
+  Rc<DxvkResourceAllocation> D3D11Buffer::DiscardSliceShared(DxvkLocalAllocationCache* cache) {
+    if (likely(!m_hasExternalSlices.load(std::memory_order_acquire)))
+      return DiscardSlice(cache);
+
+    std::lock_guard lock(m_externalMutex);
+
+    for (const auto& slice : m_externalSlices) {
+      if (slice.allocation->isSoleReference()) {
+        m_mapPtr = slice.allocation->mapPtr();
+        return slice.allocation;
+      }
+    }
+
+    return DiscardSlice(cache);
+  }
+
+
+  HRESULT D3D11Buffer::BindExternalDmabuf(int Fd, uint64_t Length, uint32_t Cookie) {
+    // The slots' owner caps them per buffer; this only bounds a
+    // misbehaving caller.
+    constexpr size_t MaxExternalSlices = 16u;
+
+    if (m_desc.Usage != D3D11_USAGE_DYNAMIC
+     || !(m_desc.CPUAccessFlags & D3D11_CPU_ACCESS_WRITE)
+     || m_mapMode != D3D11_COMMON_BUFFER_MAP_MODE_DIRECT
+     || !m_buffer || Fd < 0 || Length < m_desc.ByteWidth)
+      return E_INVALIDARG;
+
+    std::lock_guard lock(m_externalMutex);
+
+    if (m_externalSlices.size() >= MaxExternalSlices)
+      return E_INVALIDARG;
+
+    for (const auto& slice : m_externalSlices) {
+      if (slice.cookie == Cookie)
+        return E_INVALIDARG;
+    }
+
+    if (!m_parent->GetDXVKDevice()->features().extExternalMemoryDmaBuf)
+      return E_NOTIMPL;
+
+    auto allocation = m_buffer->importStorageDmabuf(Fd);
+
+    if (!allocation || !allocation->mapPtr()) {
+      Logger::err(str::format("D3D11Buffer: Failed to import ", Length, "-byte dmabuf"));
+      return E_FAIL;
+    }
+
+    m_externalSlices.push_back({ std::move(allocation), Cookie });
+    m_hasExternalSlices.store(true, std::memory_order_release);
+    return S_OK;
+  }
+
+
+  bool D3D11Buffer::GetExternalCookie(const void* pMapPtr, uint32_t* pCookie) {
+    if (!pMapPtr || !m_hasExternalSlices.load(std::memory_order_acquire))
+      return false;
+
+    std::lock_guard lock(m_externalMutex);
+
+    for (const auto& slice : m_externalSlices) {
+      if (slice.allocation->mapPtr() == pMapPtr) {
+        *pCookie = slice.cookie;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+
   D3D11Buffer::~D3D11Buffer() {
     if (m_desc.CPUAccessFlags && m_11on12.Resource != nullptr)
       m_11on12.Resource->Unmap(0, nullptr);

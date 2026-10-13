@@ -133,6 +133,19 @@ namespace dxvk {
       return m_mapPtr;
     }
 
+    /**
+     * \brief Discards the buffer onto an external slice if one is idle
+     *
+     * Only the immediate context's Map(WRITE_DISCARD) may call this:
+     * the owner of an external slice writes it in place after learning
+     * that a Map landed there (\c GetExternalCookie).
+     */
+    Rc<DxvkResourceAllocation> DiscardSliceShared(DxvkLocalAllocationCache* cache);
+
+    HRESULT BindExternalDmabuf(int Fd, uint64_t Length, uint32_t Cookie);
+
+    bool GetExternalCookie(const void* pMapPtr, uint32_t* pCookie);
+
     D3D10Buffer* GetD3D10Iface() {
       return &m_d3d10;
     }
@@ -196,6 +209,15 @@ namespace dxvk {
     uint64_t                      m_seq = 0ull;
 
     void*                         m_mapPtr = nullptr;
+
+    struct ExternalSlice {
+      Rc<DxvkResourceAllocation>  allocation;
+      uint32_t                    cookie;
+    };
+
+    dxvk::mutex                   m_externalMutex;
+    std::vector<ExternalSlice>    m_externalSlices;
+    std::atomic<bool>             m_hasExternalSlices = { false };
 
     D3D11DXGIResource             m_resource;
     D3D10Buffer                   m_d3d10;

@@ -291,6 +291,37 @@ namespace dxvk {
     }
 
     /**
+     * \brief Creates a buffer slice on a dmabuf
+     *
+     * The slice is host-visible regardless of the
+     * buffer's own memory properties.
+     * \param [in] fd dmabuf fd, not consumed
+     * \returns The new backing resource, or \c nullptr
+     */
+    Rc<DxvkResourceAllocation> importStorageDmabuf(int fd) {
+      DxvkAllocationInfo allocationInfo = { };
+      allocationInfo.resourceCookie = cookie();
+      allocationInfo.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                                | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+      VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      info.flags = m_info.flags;
+      info.usage = m_info.usage;
+      info.size = m_info.size;
+      m_sharingMode.fill(info);
+
+      auto allocation = m_allocator->importBufferResourceDmabuf(info, allocationInfo, fd);
+
+      if (!allocation) {
+        allocationInfo.properties &= ~VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+        allocation = m_allocator->importBufferResourceDmabuf(info, allocationInfo, fd);
+      }
+
+      return allocation;
+    }
+
+    /**
      * \brief Replaces backing resource
      * 
      * Replaces the underlying buffer and implicitly marks
