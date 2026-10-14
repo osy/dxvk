@@ -1,6 +1,10 @@
 #pragma once
 
 #include "../util/util_shared_res.h"
+
+#ifndef _WIN32
+#include <directx-native/dxn_shared.h>
+#endif
 #include "../util/util_small_vector.h"
 
 #include "../dxvk/dxvk_cs.h"
@@ -251,10 +255,11 @@ namespace dxvk {
       return m_image;
     }
 
+#ifndef _WIN32
     /**
      * \brief Native shared-resource descriptor
      *
-     * Native only: pointer to the DxvkSharedTextureDescriptor
+     * Native only: pointer to the dxn_shared_texture
      * describing this texture's dmabuf export. The descriptor and
      * its fd are owned by the texture.
      * \returns Descriptor pointer, or INVALID_HANDLE_VALUE
@@ -264,6 +269,7 @@ namespace dxvk {
         ? reinterpret_cast<HANDLE>(&m_sharedDescriptor)
         : INVALID_HANDLE_VALUE;
     }
+#endif
 
 
     /**
@@ -604,9 +610,11 @@ namespace dxvk {
 
     void*                         m_mapPtr = nullptr;
 
+#ifndef _WIN32
     // Native shared-resource descriptor; fd < 0 when not exported.
     // Owns its fd for the texture's lifetime.
-    DxvkSharedTextureDescriptor   m_sharedDescriptor = { 0u, 0u, 0u, { }, 0u, 0u, { }, 0u, -1 };
+    dxn_shared_texture            m_sharedDescriptor = { 0u, 0u, 0u, -1, { }, 0u, 0u, 0u, { }, 0u };
+#endif
 
     void CreateMappedBuffer(
             UINT                  Subresource);
@@ -632,7 +640,9 @@ namespace dxvk {
 
     void ExportImageInfo();
 
+#ifndef _WIN32
     void BuildSharedDescriptor();
+#endif
 
     static BOOL IsR32UavCompatibleFormat(
             DXGI_FORMAT           Format);

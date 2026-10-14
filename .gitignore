@@ -1,0 +1,4 @@
+
+# directx-native checkout (meson wrap-git)
+/subprojects/directx-native
+/subprojects/.wraplock

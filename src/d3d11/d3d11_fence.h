@@ -5,6 +5,10 @@
 
 #include "../util/util_shared_res.h"
 
+#ifndef _WIN32
+#include <directx-native/dxn_shared.h>
+#endif
+
 #include "d3d11_device_child.h"
 
 namespace dxvk {
@@ -48,9 +52,11 @@ namespace dxvk {
 
     D3DDestructionNotifier  m_destructionNotifier;
 
+#ifndef _WIN32
     // Native shared-fence descriptor; fd < 0 when not exported.
     // Owns its fd for the fence's lifetime.
-    DxvkSharedFenceDescriptor m_sharedDescriptor = { 0u, 0u, 0u, -1 };
+    dxn_shared_fence m_sharedDescriptor = { 0u, 0u, 0u, -1, 0u, 0u, 0u };
+#endif
 
   };
   

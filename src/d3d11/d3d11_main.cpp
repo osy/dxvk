@@ -8,6 +8,10 @@
 #include "d3d11_enums.h"
 #include "d3d11_interop.h"
 
+#ifndef _WIN32
+#include <directx-native/dxn_embedder.h>
+#endif
+
 namespace dxvk {
   Logger Logger::s_instance("d3d11.log");
 }
@@ -448,7 +452,11 @@ extern "C" {
   }
 
 #ifndef _WIN32
-  DLLEXPORT int32_t dxvk_d3d11_buffer_bind_external_dmabuf(
+  // The directx-native embedder API (dxn_embedder.h) under dxvk_.
+  DLLEXPORT DXN_DEFINE_NATIVE_ABI_VERSION(dxvk_)
+
+
+  DLLEXPORT int32_t dxvk_d3d11_buffer_bind_external_fd(
           void*                 pBuffer,
           int                   Fd,
           uint64_t              Length,

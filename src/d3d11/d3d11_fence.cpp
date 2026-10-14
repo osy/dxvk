@@ -28,16 +28,13 @@ namespace dxvk {
       fenceInfo.sharedHandle = hFence;
 #else
       // Native: shared fences are opaque-fd timeline semaphores; the
-      // HANDLE is a pointer to a DxvkSharedFenceDescriptor (see
-      // include/native/dxvk_shared_resource.h).
+      // HANDLE is a pointer to a directx-native dxn_shared_fence.
       fenceInfo.sharedType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 
       if (hFence && hFence != INVALID_HANDLE_VALUE) {
-        auto descriptor = reinterpret_cast<const DxvkSharedFenceDescriptor*>(hFence);
+        auto descriptor = reinterpret_cast<const dxn_shared_fence*>(hFence);
 
-        if (descriptor->magic != DXVK_SHARED_DESCRIPTOR_FENCE
-         || descriptor->version != DXVK_SHARED_DESCRIPTOR_VERSION
-         || descriptor->structSize != sizeof(*descriptor)
+        if (!dxn_shared_check(descriptor, DXN_SHARED_FENCE_MAGIC, sizeof(*descriptor))
          || descriptor->fd < 0)
           throw DxvkError("D3D11: Cannot open shared fence: invalid descriptor");
 
@@ -62,10 +59,10 @@ namespace dxvk {
         throw DxvkError("D3D11: Failed to export shared fence");
 
       if (fd >= 0) {
-        m_sharedDescriptor.magic = DXVK_SHARED_DESCRIPTOR_FENCE;
-        m_sharedDescriptor.version = DXVK_SHARED_DESCRIPTOR_VERSION;
-        m_sharedDescriptor.structSize = sizeof(m_sharedDescriptor);
+        DXN_SHARED_INIT(&m_sharedDescriptor, DXN_SHARED_FENCE_MAGIC);
         m_sharedDescriptor.fd = fd;
+        m_sharedDescriptor.flags = Flags;
+        m_sharedDescriptor.initial_value = InitialValue;
       }
     }
 #endif

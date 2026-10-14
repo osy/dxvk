@@ -19,8 +19,3 @@ install_headers(
   subdir: 'dxvk/wsi',
 )
 
-install_headers(
-  'dxvk_shared_resource.h',
-  'dxvk_external_buffer.h',
-  subdir: 'dxvk',
-)

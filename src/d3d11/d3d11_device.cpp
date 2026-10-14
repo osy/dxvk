@@ -2644,18 +2644,16 @@ namespace dxvk {
     }
 #else
     // Native: the handle is a pointer to a caller-provided
-    // DxvkSharedTextureDescriptor; dxvk reads it synchronously and
-    // dup()s the fd, the caller keeps ownership of both.
+    // dxn_shared_texture (directx-native); dxvk reads it synchronously
+    // and dup()s the fd, the caller keeps ownership of both.
     if (hResource == nullptr || hResource == INVALID_HANDLE_VALUE)
       return E_INVALIDARG;
 
-    auto descriptor = reinterpret_cast<const DxvkSharedTextureDescriptor*>(hResource);
+    auto descriptor = reinterpret_cast<const dxn_shared_texture*>(hResource);
 
-    if (descriptor->magic != DXVK_SHARED_DESCRIPTOR_TEXTURE
-     || descriptor->version != DXVK_SHARED_DESCRIPTOR_VERSION
-     || descriptor->structSize != sizeof(*descriptor)
-     || descriptor->planeCount < 1
-     || descriptor->planeCount > DXVK_SHARED_MAX_PLANES
+    if (!dxn_shared_check(descriptor, DXN_SHARED_TEXTURE_MAGIC, sizeof(*descriptor))
+     || descriptor->plane_count < 1
+     || descriptor->plane_count > DXN_SHARED_MAX_PLANES
      || descriptor->fd < 0) {
       Logger::warn("D3D11Device::OpenSharedResourceGeneric: Invalid shared descriptor");
       return E_INVALIDARG;
@@ -2664,19 +2662,19 @@ namespace dxvk {
     const auto& metadata = descriptor->meta;
 
     D3D11_COMMON_TEXTURE_DESC d3d11Desc;
-    d3d11Desc.Width          = metadata.Width;
-    d3d11Desc.Height         = metadata.Height;
+    d3d11Desc.Width          = metadata.width;
+    d3d11Desc.Height         = metadata.height;
     d3d11Desc.Depth          = 1,
-    d3d11Desc.MipLevels      = metadata.MipLevels;
-    d3d11Desc.ArraySize      = metadata.ArraySize;
-    d3d11Desc.Format         = DXGI_FORMAT(metadata.Format);
-    d3d11Desc.SampleDesc.Count   = metadata.SampleDesc.Count;
-    d3d11Desc.SampleDesc.Quality = metadata.SampleDesc.Quality;
-    d3d11Desc.Usage          = D3D11_USAGE(metadata.Usage);
-    d3d11Desc.BindFlags      = metadata.BindFlags;
-    d3d11Desc.CPUAccessFlags = metadata.CPUAccessFlags;
-    d3d11Desc.MiscFlags      = metadata.MiscFlags;
-    d3d11Desc.TextureLayout  = D3D11_TEXTURE_LAYOUT(metadata.TextureLayout);
+    d3d11Desc.MipLevels      = metadata.mip_levels;
+    d3d11Desc.ArraySize      = metadata.array_size;
+    d3d11Desc.Format         = DXGI_FORMAT(metadata.dxgi_format);
+    d3d11Desc.SampleDesc.Count   = metadata.sample_count;
+    d3d11Desc.SampleDesc.Quality = metadata.sample_quality;
+    d3d11Desc.Usage          = D3D11_USAGE(metadata.usage);
+    d3d11Desc.BindFlags      = metadata.bind_flags;
+    d3d11Desc.CPUAccessFlags = metadata.cpu_access_flags;
+    d3d11Desc.MiscFlags      = metadata.misc_flags;
+    d3d11Desc.TextureLayout  = D3D11_TEXTURE_LAYOUT(metadata.texture_layout);
 
     if (!(d3d11Desc.MiscFlags & (D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE))) {
       Logger::warn("Fixing up wrong MiscFlags");

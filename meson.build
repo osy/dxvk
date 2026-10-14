@@ -227,6 +227,12 @@ dxvk_buildenv = configure_file(
 
 if platform != 'windows'
   subdir('include/native')
+
+  directx_native_dep = dependency('directx-native',
+    fallback        : [ 'directx-native', 'directx_native_dep' ],
+    default_options : [ 'tests=false' ])
+else
+  directx_native_dep = dependency('', required : false)
 endif
 
 subdir('src')

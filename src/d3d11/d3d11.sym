@@ -4,8 +4,9 @@
     D3D11CreateDevice;
     D3D11CreateDeviceAndSwapChain;
     D3D11On12CreateDevice;
-    dxvk_d3d11_buffer_bind_external_dmabuf;
+    dxvk_d3d11_buffer_bind_external_fd;
     dxvk_d3d11_buffer_external_cookie;
+    dxvk_native_abi_version;
 
   local:
     *;
