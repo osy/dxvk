@@ -793,6 +793,9 @@ namespace dxvk {
 
       if (!limits
        || (limits->externalFeatures & requiredFeatures) != requiredFeatures
+       || createInfo.extent.width > limits->maxExtent.width
+       || createInfo.extent.height > limits->maxExtent.height
+       || createInfo.extent.depth > limits->maxExtent.depth
        || createInfo.mipLevels > limits->maxMipLevels
        || createInfo.arrayLayers > limits->maxArrayLayers) {
         Logger::err("Failed to create dmabuf-shared resource: linear image not shareable");
@@ -885,6 +888,13 @@ namespace dxvk {
     }
 
     if (m_dmabufModifiers.empty()) {
+      // A driver may support external-memory LINEAR images without exposing
+      // DRM_FORMAT_MOD_LINEAR. Query that path when a linear layout is required.
+      if (sharingInfo.dmabufForceLinear
+       || (sharingInfo.mode == DxvkSharedHandleMode::Import && sharingInfo.dmabufModifier == 0u)) {
+        m_dmabufUseModifiers = false;
+        return canShareDmabufImage(device, createInfo, sharingInfo);
+      }
       Logger::err(str::format("Failed to create dmabuf-shared resource: no usable modifier for format ",
         createInfo.format));
       return false;
